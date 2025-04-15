@@ -6,6 +6,8 @@ info:
 servers:
   - url: http://localhost:3000
     description: Servidor local
+  - url: https://api-aws-ndou.onrender.com/
+    description: Servidor Publico
 
 paths:
   /talleres:
