@@ -96,7 +96,7 @@ app.get('/', (req, res) => {
 
 // Ruta 1: Crear taller con portada
 app.post('/talleres', upload.single('portada'), cleanTempFiles, async (req, res) => {
-  const { nombre, descripcion } = req.body;
+  const { nombre, descripcion, duracion, nivelDificultad, materiales, objetivos } = req.body;
   const portada = req.file;
 
   if (!nombre || !descripcion) {
@@ -131,6 +131,10 @@ app.post('/talleres', upload.single('portada'), cleanTempFiles, async (req, res)
         id: tallerId,
         nombre,
         descripcion,
+        duracion: duracion || null,
+        nivelDificultad: nivelDificultad || 'FÁCIL',
+        materiales: materiales || null,
+        objetivos: objetivos || null,
         portadaUrl: portadaS3Response.Location,
         carpetaS3: `talleres/${tallerId}/`,
         createdAt: new Date().toISOString(),
@@ -144,8 +148,13 @@ app.post('/talleres', upload.single('portada'), cleanTempFiles, async (req, res)
       id: tallerId,
       nombre,
       descripcion,
+      duracion: tallerParams.Item.duracion,
+      nivelDificultad: tallerParams.Item.nivelDificultad,
+      materiales: tallerParams.Item.materiales,
+      objetivos: tallerParams.Item.objetivos,
       portadaUrl: portadaS3Response.Location,
-      carpetaS3: tallerParams.Item.carpetaS3
+      carpetaS3: tallerParams.Item.carpetaS3,
+      createdAt: tallerParams.Item.createdAt
     });
   } catch (error) {
     console.error('Error al crear taller:', error);
@@ -156,11 +165,11 @@ app.post('/talleres', upload.single('portada'), cleanTempFiles, async (req, res)
 // Ruta 2: Agregar slide a un taller
 app.post('/talleres/:tallerId/slides', upload.single('imagen'), cleanTempFiles, async (req, res) => {
   const tallerId = req.params.tallerId;
-  const { titulo, descripcion } = req.body;
+  const { descripcion } = req.body;
   const imagen = req.file;
 
-  if (!titulo || !descripcion) {
-    return res.status(400).json({ error: "Título y descripción son requeridos" });
+  if (!descripcion) {
+    return res.status(400).json({ error: "Descripción es requerida" });
   }
 
   try {
@@ -195,7 +204,7 @@ app.post('/talleres/:tallerId/slides', upload.single('imagen'), cleanTempFiles, 
     // Crear el nuevo slide
     const nuevoSlide = {
       id: uuidv4(),
-      titulo,
+      titulo: `Paso ${taller.Item.slides ? taller.Item.slides.length + 1 : 1}`,
       descripcion,
       imagenUrl,
       createdAt: new Date().toISOString()
@@ -205,9 +214,10 @@ app.post('/talleres/:tallerId/slides', upload.single('imagen'), cleanTempFiles, 
     const updateParams = {
       TableName: 'Talleres',
       Key: { id: tallerId },
-      UpdateExpression: 'SET slides = list_append(if_not_exists(slides, :empty_list), updatedAt = :updatedAt',
+      UpdateExpression: 'SET slides = list_append(if_not_exists(slides, :empty_list), :nuevo_slide), updatedAt = :updatedAt',
       ExpressionAttributeValues: {
         ':empty_list': [],
+        ':nuevo_slide': [nuevoSlide],
         ':updatedAt': new Date().toISOString()
       },
       ReturnValues: 'ALL_NEW'
@@ -216,10 +226,6 @@ app.post('/talleres/:tallerId/slides', upload.single('imagen'), cleanTempFiles, 
     // Si hay slides existentes, los mantenemos
     if (taller.Item.slides) {
       updateParams.UpdateExpression = 'SET slides = list_append(slides, :nuevo_slide), updatedAt = :updatedAt';
-      updateParams.ExpressionAttributeValues[':nuevo_slide'] = [nuevoSlide];
-    } else {
-      updateParams.UpdateExpression = 'SET slides = :nuevo_slide, updatedAt = :updatedAt';
-      updateParams.ExpressionAttributeValues[':nuevo_slide'] = [nuevoSlide];
     }
 
     const updatedTaller = await dynamoDB.update(updateParams).promise();
@@ -260,7 +266,7 @@ app.get('/talleres', async (req, res) => {
   try {
     const params = {
       TableName: 'Talleres',
-      ProjectionExpression: 'id, nombre, descripcion, portadaUrl, createdAt'
+      ProjectionExpression: 'id, nombre, descripcion, duracion, nivelDificultad, portadaUrl, createdAt'
     };
     const data = await dynamoDB.scan(params).promise();
     res.json(data.Items || []);

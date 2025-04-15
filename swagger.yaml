@@ -13,7 +13,7 @@ paths:
   /talleres:
     post:
       summary: Crear un nuevo taller con portada
-      description: Crea un nuevo taller incluyendo nombre, descripción y una imagen de portada.
+      description: Crea un nuevo taller incluyendo todos los datos del formulario y una imagen de portada.
       requestBody:
         required: true
         content:
@@ -31,6 +31,18 @@ paths:
                 descripcion:
                   type: string
                   description: Descripción detallada del taller.
+                duracion:
+                  type: string
+                  description: Duración estimada del taller.
+                nivelDificultad:
+                  type: string
+                  description: Nivel de dificultad del taller (FÁCIL, INTERMEDIO, DIFÍCIL).
+                materiales:
+                  type: string
+                  description: Lista de materiales necesarios para el taller.
+                objetivos:
+                  type: string
+                  description: Objetivos de aprendizaje del taller.
                 portada:
                   type: string
                   format: binary
@@ -64,7 +76,7 @@ paths:
   /talleres/{tallerId}:
     get:
       summary: Obtener un taller con sus slides
-      description: Devuelve los detalles de un taller específico, incluyendo los slides asociados.
+      description: Devuelve los detalles completos de un taller específico, incluyendo los slides asociados.
       parameters:
         - name: tallerId
           in: path
@@ -108,7 +120,7 @@ paths:
   /talleres/{tallerId}/slides:
     post:
       summary: Agregar slide a un taller
-      description: Agrega un slide a un taller existente. Se pueden incluir título, descripción y una imagen opcional.
+      description: Agrega un slide a un taller existente. Se puede incluir descripción y una imagen opcional.
       parameters:
         - name: tallerId
           in: path
@@ -123,15 +135,11 @@ paths:
             schema:
               type: object
               required:
-                - titulo
                 - descripcion
               properties:
-                titulo:
-                  type: string
-                  description: Título del slide.
                 descripcion:
                   type: string
-                  description: Descripción del slide.
+                  description: Descripción detallada del slide.
                 imagen:
                   type: string
                   format: binary
@@ -158,32 +166,68 @@ components:
         - nombre
         - descripcion
       properties:
+        id:
+          type: string
+          description: ID único del taller.
         nombre:
           type: string
           description: Nombre del taller.
         descripcion:
           type: string
           description: Descripción detallada del taller.
+        duracion:
+          type: string
+          description: Duración estimada del taller.
+        nivelDificultad:
+          type: string
+          description: Nivel de dificultad (FÁCIL, INTERMEDIO, DIFÍCIL).
+        materiales:
+          type: string
+          description: Lista de materiales necesarios.
+        objetivos:
+          type: string
+          description: Objetivos de aprendizaje.
+        portadaUrl:
+          type: string
+          description: URL de la imagen de portada en S3.
+        carpetaS3:
+          type: string
+          description: Ruta en S3 donde se almacenan los archivos.
+        createdAt:
+          type: string
+          format: date-time
+          description: Fecha de creación.
+        updatedAt:
+          type: string
+          format: date-time
+          description: Fecha de última actualización.
+        slides:
+          type: array
+          items:
+            $ref: '#/components/schemas/Slide'
+          description: Lista de slides del taller.
+    
     TallerResponse:
       type: object
       properties:
         id:
           type: string
-          description: ID único del taller.
         nombre:
           type: string
         descripcion:
           type: string
+        duracion:
+          type: string
+        nivelDificultad:
+          type: string
         portadaUrl:
           type: string
-          description: URL de la imagen de la portada almacenada en S3.
         carpetaS3:
           type: string
-          description: Ruta en S3 donde se almacenan los archivos del taller.
         createdAt:
           type: string
           format: date-time
-          description: Fecha de creación del taller.
+    
     Slide:
       type: object
       properties:
@@ -192,28 +236,29 @@ components:
           description: ID único del slide.
         titulo:
           type: string
-          description: Título del slide.
+          description: Título generado automáticamente (Paso X).
         descripcion:
           type: string
           description: Descripción del slide.
         imagenUrl:
           type: string
           nullable: true
-          description: URL de la imagen del slide (si fue proporcionada).
+          description: URL de la imagen del slide.
         createdAt:
           type: string
           format: date-time
-          description: Fecha de creación del slide.
+          description: Fecha de creación.
+    
     TallerDetailResponse:
-      type: object
       allOf:
-        - $ref: '#/components/schemas/TallerResponse'
+        - $ref: '#/components/schemas/Taller'
         - type: object
           properties:
             slides:
               type: array
               items:
                 $ref: '#/components/schemas/Slide'
+    
     SlideResponse:
       type: object
       properties:
@@ -221,6 +266,7 @@ components:
           $ref: '#/components/schemas/Slide'
         taller:
           $ref: '#/components/schemas/TallerDetailResponse'
+    
     MessageResponse:
       type: object
       properties:
