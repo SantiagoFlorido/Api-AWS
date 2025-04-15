@@ -1,0 +1,227 @@
+openapi: 3.0.0
+info:
+  title: API de Talleres
+  description: API para gestión de talleres, slides y sus imágenes.
+  version: 1.0.0
+servers:
+  - url: http://localhost:3000
+    description: Servidor local
+
+paths:
+  /talleres:
+    post:
+      summary: Crear un nuevo taller con portada
+      description: Crea un nuevo taller incluyendo nombre, descripción y una imagen de portada.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - nombre
+                - descripcion
+                - portada
+              properties:
+                nombre:
+                  type: string
+                  description: Nombre del taller.
+                descripcion:
+                  type: string
+                  description: Descripción detallada del taller.
+                portada:
+                  type: string
+                  format: binary
+                  description: Archivo de imagen para la portada del taller.
+      responses:
+        '201':
+          description: Taller creado exitosamente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TallerResponse'
+        '400':
+          description: Datos inválidos proporcionados.
+        '500':
+          description: Error del servidor.
+    get:
+      summary: Obtener todos los talleres (datos basicos)
+      description: Devuelve una lista de todos los talleres registrados (datos básicos).
+      responses:
+        '200':
+          description: Lista de talleres obtenida exitosamente.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TallerResponse'
+        '500':
+          description: Error del servidor.
+
+  /talleres/{tallerId}:
+    get:
+      summary: Obtener un taller con sus slides
+      description: Devuelve los detalles de un taller específico, incluyendo los slides asociados.
+      parameters:
+        - name: tallerId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID del taller a obtener.
+      responses:
+        '200':
+          description: Taller obtenido exitosamente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TallerDetailResponse'
+        '404':
+          description: Taller no encontrado.
+        '500':
+          description: Error del servidor.
+    delete:
+      summary: Eliminar un taller con todo su contenido
+      description: Elimina un taller y todo su contenido (archivos en S3 y registro en DynamoDB).
+      parameters:
+        - name: tallerId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID del taller a eliminar.
+      responses:
+        '200':
+          description: Taller eliminado correctamente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '404':
+          description: Taller no encontrado.
+        '500':
+          description: Error del servidor.
+
+  /talleres/{tallerId}/slides:
+    post:
+      summary: Agregar slide a un taller
+      description: Agrega un slide a un taller existente. Se pueden incluir título, descripción y una imagen opcional.
+      parameters:
+        - name: tallerId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID del taller al que se asociará el slide.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - titulo
+                - descripcion
+              properties:
+                titulo:
+                  type: string
+                  description: Título del slide.
+                descripcion:
+                  type: string
+                  description: Descripción del slide.
+                imagen:
+                  type: string
+                  format: binary
+                  description: Imagen del slide (opcional).
+      responses:
+        '201':
+          description: Slide agregado exitosamente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SlideResponse'
+        '400':
+          description: Datos inválidos proporcionados.
+        '404':
+          description: Taller no encontrado.
+        '500':
+          description: Error del servidor.
+
+components:
+  schemas:
+    Taller:
+      type: object
+      required:
+        - nombre
+        - descripcion
+      properties:
+        nombre:
+          type: string
+          description: Nombre del taller.
+        descripcion:
+          type: string
+          description: Descripción detallada del taller.
+    TallerResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: ID único del taller.
+        nombre:
+          type: string
+        descripcion:
+          type: string
+        portadaUrl:
+          type: string
+          description: URL de la imagen de la portada almacenada en S3.
+        carpetaS3:
+          type: string
+          description: Ruta en S3 donde se almacenan los archivos del taller.
+        createdAt:
+          type: string
+          format: date-time
+          description: Fecha de creación del taller.
+    Slide:
+      type: object
+      properties:
+        id:
+          type: string
+          description: ID único del slide.
+        titulo:
+          type: string
+          description: Título del slide.
+        descripcion:
+          type: string
+          description: Descripción del slide.
+        imagenUrl:
+          type: string
+          nullable: true
+          description: URL de la imagen del slide (si fue proporcionada).
+        createdAt:
+          type: string
+          format: date-time
+          description: Fecha de creación del slide.
+    TallerDetailResponse:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/TallerResponse'
+        - type: object
+          properties:
+            slides:
+              type: array
+              items:
+                $ref: '#/components/schemas/Slide'
+    SlideResponse:
+      type: object
+      properties:
+        slide:
+          $ref: '#/components/schemas/Slide'
+        taller:
+          $ref: '#/components/schemas/TallerDetailResponse'
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          description: Mensaje de confirmación o error.
