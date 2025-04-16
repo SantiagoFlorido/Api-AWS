@@ -73,6 +73,50 @@ const cleanTempFiles = (req, res, next) => {
   next();
 };
 
+// Ruta de prueba de conexión AWS
+app.get('/test-aws', async (req, res) => {
+  try {
+    // 1. Probar conexión con DynamoDB
+    const dynamo = new AWS.DynamoDB();
+    const tables = await dynamo.listTables().promise();
+    
+    // 2. Probar conexión con S3
+    const s3Params = {
+      Bucket: process.env.S3_BUCKET_NAME,
+      MaxKeys: 1
+    };
+    const s3Objects = await s3.listObjectsV2(s3Params).promise();
+    
+    res.status(200).json({
+      dynamoDB: {
+        connected: true,
+        tables: tables.TableNames,
+        message: 'Conexión con DynamoDB exitosa'
+      },
+      s3: {
+        connected: true,
+        objectsCount: s3Objects.KeyCount,
+        message: 'Conexión con S3 exitosa'
+      }
+    });
+  } catch (error) {
+    console.error('Error en test-aws:', error);
+    res.status(500).json({
+      error: 'Error al conectar con AWS',
+      details: {
+        dynamoDB: {
+          connected: false,
+          error: error.code === 'ResourceNotFoundException' ? 'Tabla no encontrada' : error.message
+        },
+        s3: {
+          connected: false,
+          error: error.code === 'NoSuchBucket' ? 'Bucket no encontrado' : error.message
+        }
+      }
+    });
+  }
+});
+
 // Ruta de inicio - Muestra todas las rutas disponibles
 app.get('/', (req, res) => {
   res.status(200).json({
@@ -81,6 +125,7 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     routes: {
       docs: '/api-docs',
+      test: '/test-aws',
       talleres: {
         create: 'POST /talleres',
         getAll: 'GET /talleres',
@@ -95,150 +140,166 @@ app.get('/', (req, res) => {
 });
 
 // Ruta 1: Crear taller con portada
-app.post('/talleres', upload.single('portada'), cleanTempFiles, async (req, res) => {
-  const { nombre, descripcion, duracion, nivelDificultad, materiales, objetivos } = req.body;
-  const portada = req.file;
+app.post(
+  '/talleres',
+  upload.single('portada'),
+  // Primero subimos la portada y guardamos en Dynamo:
+  async (req, res, next) => {
+    const { nombre, descripcion, duracion, nivelDificultad, materiales, objetivos } = req.body;
+    const portada = req.file;
 
-  if (!nombre || !descripcion) {
-    return res.status(400).json({ error: "Nombre y descripción son requeridos" });
-  }
-
-  if (!portada) {
-    return res.status(400).json({ error: "La portada es requerida" });
-  }
-
-  const tallerId = uuidv4();
-
-  try {
-    // Subir portada a S3
-    const portadaFileName = `portada-${uuidv4()}${path.extname(portada.originalname)}`;
-    const portadaContent = fs.readFileSync(portada.path);
-    
-    const portadaS3Params = {
-      Bucket: process.env.S3_BUCKET_NAME,
-      Key: `talleres/${tallerId}/${portadaFileName}`,
-      Body: portadaContent,
-      ContentType: portada.mimetype,
-      ACL: 'public-read',
-    };
-
-    const portadaS3Response = await s3.upload(portadaS3Params).promise();
-
-    // Crear taller en DynamoDB
-    const tallerParams = {
-      TableName: 'Talleres',
-      Item: {
-        id: tallerId,
-        nombre,
-        descripcion,
-        duracion: duracion || null,
-        nivelDificultad: nivelDificultad || 'FÁCIL',
-        materiales: materiales || null,
-        objetivos: objetivos || null,
-        portadaUrl: portadaS3Response.Location,
-        carpetaS3: `talleres/${tallerId}/`,
-        createdAt: new Date().toISOString(),
-        slides: [] // Array para almacenar los slides
-      },
-    };
-
-    await dynamoDB.put(tallerParams).promise();
-    
-    res.status(201).json({
-      id: tallerId,
-      nombre,
-      descripcion,
-      duracion: tallerParams.Item.duracion,
-      nivelDificultad: tallerParams.Item.nivelDificultad,
-      materiales: tallerParams.Item.materiales,
-      objetivos: tallerParams.Item.objetivos,
-      portadaUrl: portadaS3Response.Location,
-      carpetaS3: tallerParams.Item.carpetaS3,
-      createdAt: tallerParams.Item.createdAt
-    });
-  } catch (error) {
-    console.error('Error al crear taller:', error);
-    res.status(500).json({ error: "Error al crear taller" });
-  }
-});
-
-// Ruta 2: Agregar slide a un taller
-app.post('/talleres/:tallerId/slides', upload.single('imagen'), cleanTempFiles, async (req, res) => {
-  const tallerId = req.params.tallerId;
-  const { descripcion } = req.body;
-  const imagen = req.file;
-
-  if (!descripcion) {
-    return res.status(400).json({ error: "Descripción es requerida" });
-  }
-
-  try {
-    // Verificar si el taller existe
-    const taller = await dynamoDB.get({
-      TableName: 'Talleres',
-      Key: { id: tallerId }
-    }).promise();
-
-    if (!taller.Item) {
-      return res.status(404).json({ error: "Taller no encontrado" });
+    if (!nombre || !descripcion) {
+      return res.status(400).json({ error: "Nombre y descripción son requeridos" });
     }
 
-    let imagenUrl = null;
-    if (imagen) {
-      // Subir imagen del slide a S3
-      const imagenFileName = `slide-${uuidv4()}${path.extname(imagen.originalname)}`;
-      const imagenContent = fs.readFileSync(imagen.path);
+    if (!portada) {
+      return res.status(400).json({ error: "La portada es requerida" });
+    }
+
+    const tallerId = uuidv4();
+
+    try {
+      // Subir portada a S3
+      const portadaFileName = `portada-${uuidv4()}${path.extname(portada.originalname)}`;
+      const portadaContent = fs.readFileSync(portada.path);
       
-      const imagenS3Params = {
+      const portadaS3Params = {
         Bucket: process.env.S3_BUCKET_NAME,
-        Key: `talleres/${tallerId}/${imagenFileName}`,
-        Body: imagenContent,
-        ContentType: imagen.mimetype,
+        Key: `talleres/${tallerId}/${portadaFileName}`,
+        Body: portadaContent,
+        ContentType: portada.mimetype,
         ACL: 'public-read',
       };
 
-      const imagenS3Response = await s3.upload(imagenS3Params).promise();
-      imagenUrl = imagenS3Response.Location;
+      const portadaS3Response = await s3.upload(portadaS3Params).promise();
+
+      // Crear taller en DynamoDB
+      const tallerParams = {
+        TableName: 'Talleres',
+        Item: {
+          id: tallerId,
+          nombre,
+          descripcion,
+          duracion: duracion || null,
+          nivelDificultad: nivelDificultad || 'FÁCIL',
+          materiales: materiales || null,
+          objetivos: objetivos || null,
+          portadaUrl: portadaS3Response.Location,
+          carpetaS3: `talleres/${tallerId}/`,
+          createdAt: new Date().toISOString(),
+          slides: [] // Array para almacenar los slides
+        },
+      };
+
+      await dynamoDB.put(tallerParams).promise();
+      
+      res.status(201).json({
+        id: tallerId,
+        nombre,
+        descripcion,
+        duracion: tallerParams.Item.duracion,
+        nivelDificultad: tallerParams.Item.nivelDificultad,
+        materiales: tallerParams.Item.materiales,
+        objetivos: tallerParams.Item.objetivos,
+        portadaUrl: portadaS3Response.Location,
+        carpetaS3: tallerParams.Item.carpetaS3,
+        createdAt: tallerParams.Item.createdAt
+      });
+    } catch (error) {
+      console.error('Error al crear taller:', error);
+      res.status(500).json({ error: "Error al crear taller" });
+    } finally {
+      next();
+    }
+  },
+  // Después limpiamos el archivo temporal
+  cleanTempFiles
+);
+
+// Ruta 2: Agregar slide a un taller
+app.post(
+  '/talleres/:tallerId/slides',
+  upload.single('imagen'),
+  async (req, res, next) => {
+    const tallerId = req.params.tallerId;
+    const { descripcion } = req.body;
+    const imagen = req.file;
+
+    if (!descripcion) {
+      return res.status(400).json({ error: "Descripción es requerida" });
     }
 
-    // Crear el nuevo slide
-    const nuevoSlide = {
-      id: uuidv4(),
-      titulo: `Paso ${taller.Item.slides ? taller.Item.slides.length + 1 : 1}`,
-      descripcion,
-      imagenUrl,
-      createdAt: new Date().toISOString()
-    };
+    try {
+      // Verificar si el taller existe
+      const taller = await dynamoDB.get({
+        TableName: 'Talleres',
+        Key: { id: tallerId }
+      }).promise();
 
-    // Actualizar el taller añadiendo el nuevo slide
-    const updateParams = {
-      TableName: 'Talleres',
-      Key: { id: tallerId },
-      UpdateExpression: 'SET slides = list_append(if_not_exists(slides, :empty_list), :nuevo_slide), updatedAt = :updatedAt',
-      ExpressionAttributeValues: {
-        ':empty_list': [],
-        ':nuevo_slide': [nuevoSlide],
-        ':updatedAt': new Date().toISOString()
-      },
-      ReturnValues: 'ALL_NEW'
-    };
+      if (!taller.Item) {
+        return res.status(404).json({ error: "Taller no encontrado" });
+      }
 
-    // Si hay slides existentes, los mantenemos
-    if (taller.Item.slides) {
-      updateParams.UpdateExpression = 'SET slides = list_append(slides, :nuevo_slide), updatedAt = :updatedAt';
+      let imagenUrl = null;
+      if (imagen) {
+        // Subir imagen del slide a S3
+        const imagenFileName = `slide-${uuidv4()}${path.extname(imagen.originalname)}`;
+        const imagenContent = fs.readFileSync(imagen.path);
+        
+        const imagenS3Params = {
+          Bucket: process.env.S3_BUCKET_NAME,
+          Key: `talleres/${tallerId}/${imagenFileName}`,
+          Body: imagenContent,
+          ContentType: imagen.mimetype,
+          ACL: 'public-read',
+        };
+
+        const imagenS3Response = await s3.upload(imagenS3Params).promise();
+        imagenUrl = imagenS3Response.Location;
+      }
+
+      // Crear el nuevo slide
+      const nuevoSlide = {
+        id: uuidv4(),
+        titulo: `Paso ${taller.Item.slides ? taller.Item.slides.length + 1 : 1}`,
+        descripcion,
+        imagenUrl,
+        createdAt: new Date().toISOString()
+      };
+
+      // Actualizar el taller añadiendo el nuevo slide
+      const updateParams = {
+        TableName: 'Talleres',
+        Key: { id: tallerId },
+        UpdateExpression: 'SET slides = list_append(if_not_exists(slides, :empty_list), :nuevo_slide), updatedAt = :updatedAt',
+        ExpressionAttributeValues: {
+          ':empty_list': [],
+          ':nuevo_slide': [nuevoSlide],
+          ':updatedAt': new Date().toISOString()
+        },
+        ReturnValues: 'ALL_NEW'
+      };
+
+      // Si hay slides existentes, los mantenemos
+      if (taller.Item.slides) {
+        updateParams.UpdateExpression = 'SET slides = list_append(slides, :nuevo_slide), updatedAt = :updatedAt';
+      }
+
+      const updatedTaller = await dynamoDB.update(updateParams).promise();
+
+      res.status(201).json({
+        slide: nuevoSlide,
+        taller: updatedTaller.Attributes
+      });
+    } catch (error) {
+      console.error('Error al agregar slide:', error);
+      res.status(500).json({ error: "Error al agregar slide" });
+    } finally {
+      next();
     }
-
-    const updatedTaller = await dynamoDB.update(updateParams).promise();
-
-    res.status(201).json({
-      slide: nuevoSlide,
-      taller: updatedTaller.Attributes
-    });
-  } catch (error) {
-    console.error('Error al agregar slide:', error);
-    res.status(500).json({ error: "Error al agregar slide" });
-  }
-});
+  },
+  cleanTempFiles
+);
 
 // Ruta 3: Obtener un taller con sus slides
 app.get('/talleres/:tallerId', async (req, res) => {
@@ -347,4 +408,5 @@ app.listen(PORT, () => {
   console.log(`API corriendo en http://localhost:${PORT}`);
   console.log(`Documentación Swagger disponible en http://localhost:${PORT}/api-docs`);
   console.log(`Ruta de inicio disponible en http://localhost:${PORT}/`);
+  console.log(`Ruta de prueba AWS disponible en http://localhost:${PORT}/test-aws`);
 });
