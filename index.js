@@ -143,7 +143,6 @@ app.get('/', (req, res) => {
 app.post(
   '/talleres',
   upload.single('portada'),
-  // Primero subimos la portada y guardamos en Dynamo:
   async (req, res, next) => {
     const { nombre, descripcion, duracion, nivelDificultad, materiales, objetivos } = req.body;
     const portada = req.file;
@@ -167,8 +166,7 @@ app.post(
         Bucket: process.env.S3_BUCKET_NAME,
         Key: `talleres/${tallerId}/${portadaFileName}`,
         Body: portadaContent,
-        ContentType: portada.mimetype,
-        ACL: 'public-read',
+        ContentType: portada.mimetype
       };
 
       const portadaS3Response = await s3.upload(portadaS3Params).promise();
@@ -207,12 +205,11 @@ app.post(
       });
     } catch (error) {
       console.error('Error al crear taller:', error);
-      res.status(500).json({ error: "Error al crear taller" });
+      res.status(500).json({ error: "Error al crear taller", details: error.message });
     } finally {
       next();
     }
   },
-  // Después limpiamos el archivo temporal
   cleanTempFiles
 );
 
@@ -250,8 +247,7 @@ app.post(
           Bucket: process.env.S3_BUCKET_NAME,
           Key: `talleres/${tallerId}/${imagenFileName}`,
           Body: imagenContent,
-          ContentType: imagen.mimetype,
-          ACL: 'public-read',
+          ContentType: imagen.mimetype
         };
 
         const imagenS3Response = await s3.upload(imagenS3Params).promise();
@@ -293,7 +289,7 @@ app.post(
       });
     } catch (error) {
       console.error('Error al agregar slide:', error);
-      res.status(500).json({ error: "Error al agregar slide" });
+      res.status(500).json({ error: "Error al agregar slide", details: error.message });
     } finally {
       next();
     }
@@ -318,7 +314,7 @@ app.get('/talleres/:tallerId', async (req, res) => {
     res.json(taller.Item);
   } catch (error) {
     console.error('Error al obtener taller:', error);
-    res.status(500).json({ error: "Error al obtener taller" });
+    res.status(500).json({ error: "Error al obtener taller", details: error.message });
   }
 });
 
@@ -333,7 +329,7 @@ app.get('/talleres', async (req, res) => {
     res.json(data.Items || []);
   } catch (error) {
     console.error('Error al obtener talleres:', error);
-    res.status(500).json({ error: "Error al obtener talleres" });
+    res.status(500).json({ error: "Error al obtener talleres", details: error.message });
   }
 });
 
@@ -387,7 +383,7 @@ app.delete('/talleres/:tallerId', async (req, res) => {
     res.status(200).json({ message: "Taller eliminado correctamente" });
   } catch (error) {
     console.error('Error al eliminar taller:', error);
-    res.status(500).json({ error: "Error al eliminar taller" });
+    res.status(500).json({ error: "Error al eliminar taller", details: error.message });
   }
 });
 
@@ -399,7 +395,7 @@ app.use((err, req, res, next) => {
     return res.status(400).json({ error: err.message });
   }
   
-  res.status(500).json({ error: 'Algo salió mal en el servidor!' });
+  res.status(500).json({ error: 'Algo salió mal en el servidor!', details: err.message });
 });
 
 // Iniciar servidor
