@@ -213,7 +213,7 @@ app.post(
   cleanTempFiles
 );
 
-// Ruta 2: Agregar slide a un taller
+// Ruta 2: Agregar slide a un taller - VERSIÓN CORREGIDA
 app.post(
   '/talleres/:tallerId/slides',
   upload.single('imagen'),
@@ -263,23 +263,34 @@ app.post(
         createdAt: new Date().toISOString()
       };
 
-      // Actualizar el taller añadiendo el nuevo slide
+      // Determinar la expresión de actualización basada en si ya existen slides
+      let updateExpression;
+      let expressionAttributeValues;
+      
+      if (taller.Item.slides && taller.Item.slides.length > 0) {
+        // Si ya hay slides, añadir al array existente
+        updateExpression = 'SET slides = list_append(slides, :nuevo_slide), updatedAt = :updatedAt';
+        expressionAttributeValues = {
+          ':nuevo_slide': [nuevoSlide],
+          ':updatedAt': new Date().toISOString()
+        };
+      } else {
+        // Si no hay slides, crear un nuevo array
+        updateExpression = 'SET slides = :nuevo_slide, updatedAt = :updatedAt';
+        expressionAttributeValues = {
+          ':nuevo_slide': [nuevoSlide],
+          ':updatedAt': new Date().toISOString()
+        };
+      }
+
+      // Actualizar el taller
       const updateParams = {
         TableName: 'Talleres',
         Key: { id: tallerId },
-        UpdateExpression: 'SET slides = list_append(if_not_exists(slides, :empty_list), :nuevo_slide), updatedAt = :updatedAt',
-        ExpressionAttributeValues: {
-          ':empty_list': [],
-          ':nuevo_slide': [nuevoSlide],
-          ':updatedAt': new Date().toISOString()
-        },
+        UpdateExpression: updateExpression,
+        ExpressionAttributeValues: expressionAttributeValues,
         ReturnValues: 'ALL_NEW'
       };
-
-      // Si hay slides existentes, los mantenemos
-      if (taller.Item.slides) {
-        updateParams.UpdateExpression = 'SET slides = list_append(slides, :nuevo_slide), updatedAt = :updatedAt';
-      }
 
       const updatedTaller = await dynamoDB.update(updateParams).promise();
 
@@ -289,7 +300,11 @@ app.post(
       });
     } catch (error) {
       console.error('Error al agregar slide:', error);
-      res.status(500).json({ error: "Error al agregar slide", details: error.message });
+      res.status(500).json({ 
+        error: "Error al agregar slide", 
+        details: error.message,
+        stack: error.stack
+      });
     } finally {
       next();
     }
