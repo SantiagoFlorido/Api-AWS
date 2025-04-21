@@ -144,7 +144,19 @@ app.post(
   '/talleres',
   upload.single('portada'),
   async (req, res, next) => {
-    const { nombre, descripcion, duracion, nivelDificultad, materiales, objetivos } = req.body;
+    const { 
+      nombre, 
+      descripcion, 
+      duracion, 
+      nivelDificultad, 
+      materiales, 
+      objetivos,
+      finalidades,
+      ciencia,
+      tecnologia,
+      ingenieria,
+      matematicas
+    } = req.body;
     const portada = req.file;
 
     if (!nombre || !descripcion) {
@@ -182,6 +194,11 @@ app.post(
           nivelDificultad: nivelDificultad || 'FÁCIL',
           materiales: materiales || null,
           objetivos: objetivos || null,
+          finalidades: finalidades || null,
+          ciencia: ciencia || null,
+          tecnologia: tecnologia || null,
+          ingenieria: ingenieria || null,
+          matematicas: matematicas || null,
           portadaUrl: portadaS3Response.Location,
           carpetaS3: `talleres/${tallerId}/`,
           createdAt: new Date().toISOString(),
@@ -199,6 +216,11 @@ app.post(
         nivelDificultad: tallerParams.Item.nivelDificultad,
         materiales: tallerParams.Item.materiales,
         objetivos: tallerParams.Item.objetivos,
+        finalidades: tallerParams.Item.finalidades,
+        ciencia: tallerParams.Item.ciencia,
+        tecnologia: tallerParams.Item.tecnologia,
+        ingenieria: tallerParams.Item.ingenieria,
+        matematicas: tallerParams.Item.matematicas,
         portadaUrl: portadaS3Response.Location,
         carpetaS3: tallerParams.Item.carpetaS3,
         createdAt: tallerParams.Item.createdAt
